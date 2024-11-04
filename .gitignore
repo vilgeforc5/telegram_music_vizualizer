@@ -1,0 +1,4 @@
+/node_modules
+.env
+authorized_key.json
+.idea
