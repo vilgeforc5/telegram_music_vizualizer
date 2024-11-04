@@ -40,12 +40,14 @@ export class BotService extends TelegramBot {
         return this.sendMessage(chatId, infoCodeToTextMap[code]);
     }
 
-    sendBase64Image(chatId: TelegramBot.ChatId, imageData: string) {
-        return this.sendPhoto(
-            chatId,
-            Buffer.from(imageData, "base64"),
-            {},
-            { filename: "test.jpg", contentType: "application/octet-stream" },
-        );
+    sendBase64Image(
+        chatId: TelegramBot.ChatId,
+        imageData: string,
+        options?: TelegramBot.SendPhotoOptions,
+    ) {
+        return this.sendPhoto(chatId, Buffer.from(imageData, "base64"), options || {}, {
+            filename: "test.jpg",
+            contentType: "application/octet-stream",
+        });
     }
 }

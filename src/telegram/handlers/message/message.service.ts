@@ -18,8 +18,8 @@ export class MessageService implements TelegramEventHandler<"message"> {
         @inject(globalInjectionTokens.LoggerService)
         private loggerService: LoggerService,
 
-        @inject(yandexInjectionTokens.YandexArtService)
-        private yandexArtService: YandexArtService,
+        @inject(yandexInjectionTokens.YandexArtServiceProvider)
+        private yandexArtServiceProvider: () => Promise<YandexArtService>,
 
         @inject(telegramInjectionTokens.BotService)
         private botService: BotService,
@@ -32,18 +32,20 @@ export class MessageService implements TelegramEventHandler<"message"> {
     async handler(message: Message, metadata: Metadata) {
         const chatId = _.get(message, "chat.id");
         this.loggerService.info("MessageService:", message, metadata);
+        // const artService = await this.yandexArtServiceProvider();
 
         if (!message.text) {
             return;
         }
 
-        const result = await Promise.all([
-            this.yandexArtService.getGeneratedImage("cat"),
-            this.yandexArtService.getGeneratedImage("dog"),
-        ]);
+        // const arr = message.text.split(" ").map((item) => artService.getGeneratedImage(item));
+        //
+        // const result = await Promise.all(arr);
+        //
+        // for (const image of _.compact(result)) {
+        //     await this.botService.sendBase64Image(chatId, image);
+        // }
 
-        for (const image of _.compact(result)) {
-            await this.botService.sendBase64Image(chatId, image);
-        }
+        await this.botService.sendMessage(chatId, "received");
     }
 }

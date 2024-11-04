@@ -12,27 +12,28 @@ import { ReadStream } from "node:fs";
 import { getChunkedStream } from "@/utils/getChunkedStream";
 import { LoggerService } from "@/logger.service";
 import { PassThrough } from "node:stream";
+import { YandexAbstractAuthService } from "@/yandex/yandexAbstractAuth.service";
 import Provider = interfaces.Provider;
 
 /**
  * @description uses yandex stt.v2 grpc api for streaming
  */
 @injectable()
-export class YandexSttService {
-    private _authService: YandexAuthService;
-
+export class YandexSttService extends YandexAbstractAuthService {
     constructor(
         @inject(yandexInjectionTokens.YandexAuthServiceProvider)
-        private readonly yandexAuthServiceProvider: Provider<YandexAuthService>,
+        yandexAuthServiceProvider: Provider<YandexAuthService>,
 
         @inject(globalInjectionTokens.LoggerService)
         private readonly loggerService: LoggerService,
 
         @inject(globalInjectionTokens.ConfigService)
         private readonly configService: ConfigService,
-    ) {}
+    ) {
+        super(yandexAuthServiceProvider);
+    }
 
-    async *transform(data: ReadStream | PassThrough) {
+    async *oggToText(data: ReadStream | PassThrough) {
         try {
             const folderId = this.configService.folderId;
             const authService = await this.getAuthService();
@@ -78,13 +79,7 @@ export class YandexSttService {
         }
     }
 
-    private async getAuthService() {
-        if (this._authService) {
-            return this._authService;
-        }
-
-        this._authService = (await this.yandexAuthServiceProvider()) as YandexAuthService;
-
-        return this._authService;
+    init() {
+        return this.getAuthService();
     }
 }
