@@ -9,6 +9,7 @@ import { yandexFoundationLLmUrl } from "@/static";
 import { getRandomInt } from "@/utils/getRandomInt";
 import { YandexAbstractAuthService } from "@/yandex/yandexAbstractAuth.service";
 import { LoggerService } from "@/logger.service";
+import axios from "axios";
 
 /**
  * @description uses yandex stt.v2 grpc api for streaming
@@ -50,18 +51,20 @@ export class YandexArtService extends YandexAbstractAuthService {
         };
 
         try {
-            const response = await fetch(
-                new URL("/foundationModels/v1/imageGenerationAsync", yandexFoundationLLmUrl),
+            const response = await axios.post(
+                new URL(
+                    "/foundationModels/v1/imageGenerationAsync",
+                    yandexFoundationLLmUrl,
+                ).toString(),
+                JSON.stringify(body),
                 {
-                    method: "POST",
                     headers: {
                         Authorization: `Bearer ${authService.iamToken}`,
                     },
-                    body: JSON.stringify(body),
                 },
             );
 
-            const id = _.get(await response.json(), "id");
+            const id = _.get(response, "data.id");
 
             if (!id) {
                 return undefined;
@@ -83,15 +86,15 @@ export class YandexArtService extends YandexAbstractAuthService {
 
         while (true) {
             try {
-                const response = await fetch(operationApiUrl, {
+                const response = await axios.get(operationApiUrl.toString(), {
                     headers: {
                         Authorization: `Bearer ${authService.iamToken}`,
                     },
                 });
-                const json = await response.json();
+                const data = _.get(response, "data");
 
-                if (json.done) {
-                    return json;
+                if (data.done) {
+                    return data;
                 }
             } catch (error) {
                 this.loggerService.error("YandexArtService error: ", error);

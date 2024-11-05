@@ -9,6 +9,8 @@ import {
 import { decorate, inject, injectable } from "inversify";
 import { globalInjectionTokens } from "@/di/globalInjectionTokens";
 import { ConfigService } from "@/config.service";
+import { Stream } from "node:stream";
+import { getRandomInt } from "@/utils/getRandomInt";
 
 decorate(injectable(), TelegramBot);
 
@@ -25,7 +27,16 @@ export class BotService extends TelegramBot {
             throw new Error("no telegram telegram key provided");
         }
 
-        super(configService.tgBotKey, { polling: false });
+        super(configService.tgBotKey, {
+            polling: false,
+            //@ts-ignore
+            request: {
+                agentOptions: {
+                    keepAlive: true,
+                    family: 4,
+                },
+            },
+        });
     }
 
     sendErrorMessage(chatId: TelegramBot.ChatId, code: EnumErrorCode) {
@@ -46,7 +57,18 @@ export class BotService extends TelegramBot {
         options?: TelegramBot.SendPhotoOptions,
     ) {
         return this.sendPhoto(chatId, Buffer.from(imageData, "base64"), options || {}, {
-            filename: "test.jpg",
+            filename: `${getRandomInt()}.jpg`,
+            contentType: "application/octet-stream",
+        });
+    }
+
+    sendMp4Video(
+        chatId: TelegramBot.ChatId,
+        videoStream: Stream,
+        options?: TelegramBot.SendVideoOptions,
+    ) {
+        return this.sendVideo(chatId, videoStream, options || {}, {
+            filename: `${getRandomInt()}.mp4`,
             contentType: "application/octet-stream",
         });
     }

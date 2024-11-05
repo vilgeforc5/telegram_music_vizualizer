@@ -7,7 +7,6 @@ import { yandexInjectionTokens } from "@/yandex/yandex.tokens";
 import { YandexArtService } from "@/yandex/yandexArt.service";
 import { telegramInjectionTokens } from "@/telegram/telegramInjectionTokens";
 import { BotService } from "@/telegram/bot.service";
-import _ from "lodash";
 
 /**
  * @description implemented as example that multiInject works
@@ -29,23 +28,5 @@ export class MessageService implements TelegramEventHandler<"message"> {
         return "message" as const;
     }
 
-    async handler(message: Message, metadata: Metadata) {
-        const chatId = _.get(message, "chat.id");
-        this.loggerService.info("MessageService:", message, metadata);
-        // const artService = await this.yandexArtServiceProvider();
-
-        if (!message.text) {
-            return;
-        }
-
-        // const arr = message.text.split(" ").map((item) => artService.getGeneratedImage(item));
-        //
-        // const result = await Promise.all(arr);
-        //
-        // for (const image of _.compact(result)) {
-        //     await this.botService.sendBase64Image(chatId, image);
-        // }
-
-        await this.botService.sendMessage(chatId, "received");
-    }
+    async handler(message: Message, metadata: Metadata) {}
 }

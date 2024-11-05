@@ -11,10 +11,17 @@ import { DownloadService } from "@/telegram/download.service";
 import { yandexInjectionTokens } from "@/yandex/yandex.tokens";
 import { YandexSttService } from "@/yandex/yandexStt.service";
 import { PassThrough, Readable } from "node:stream";
-import streamWeb from "node:stream/web";
 import { ffmpegInjectionTokens } from "@/ffmpeg/ffmpeg.tokens";
 import { FfmpegService } from "@/ffmpeg/ffmpeg.service";
 import { YandexArtService } from "@/yandex/yandexArt.service";
+import { SpeechRecognitionAlternative } from "@yandex-cloud/nodejs-sdk/dist/generated/yandex/cloud/ai/stt/v2/stt_service";
+import { pipeline } from "stream/promises";
+import { getRandomInt } from "@/utils/getRandomInt";
+import fsExtra from "fs-extra";
+//@ts-ignore
+import awaitSpawn from "await-spawn";
+import path from "node:path";
+import * as os from "node:os";
 
 @injectable()
 export class AudioService implements TelegramEventHandler<"audio"> {
@@ -45,7 +52,6 @@ export class AudioService implements TelegramEventHandler<"audio"> {
     async handler(message: Message) {
         const chatId = _.get(message, "chat.id");
         const audio = _.get(message, "audio");
-
         const { code, ok } = this.precheckAudio(audio);
 
         if (!ok) {
@@ -55,7 +61,6 @@ export class AudioService implements TelegramEventHandler<"audio"> {
         }
 
         await this.botService.sendInfoMessage(chatId, code);
-
         const fileId = _.get(audio, "file_id");
 
         if (!fileId) {
@@ -65,70 +70,236 @@ export class AudioService implements TelegramEventHandler<"audio"> {
         }
 
         const audioInfo = await this.downloadService.getFileInfo(fileId);
-
         const audioPath = _.get(audioInfo, "result.file_path");
+
         if (!audioPath || _.isEmpty(audioPath)) {
             await this.botService.sendErrorMessage(chatId, EnumErrorCode.DOWNLOADING_ERROR);
 
             return;
         }
 
-        const audioFileResponse = await this.downloadService.getFileResponse(audioPath);
+        const audioResponseStream = await this.downloadService.getFileStream(audioPath);
 
-        if (!audioFileResponse.ok || !audioFileResponse.body) {
+        if (!audioResponseStream) {
             await this.botService.sendErrorMessage(chatId, EnumErrorCode.DOWNLOADING_ERROR);
 
             return;
         }
 
-        // possible bottleneck - telegram seems to convert all audio files to mp3
-        // need to manually convert them to ogg / wav as stt.v2 doesn't support mp3 streaming
+        const directory = fsExtra.mkdtempSync(path.join(os.tmpdir(), "tgaudiobot"));
+        console.log({ directory });
+        const file = fsExtra.createWriteStream(path.join(directory, "file.mp3"));
 
-        const mp3Stream = Readable.fromWeb(audioFileResponse.body as streamWeb.ReadableStream);
-        const ffmpegCommandResult = this.ffmpegService.convertToOgg(mp3Stream);
-        const oggStream = ffmpegCommandResult.pipe();
+        await pipeline(audioResponseStream, file);
 
-        if (!(oggStream instanceof PassThrough)) {
+        const fileStream = fsExtra.createReadStream(path.join(directory, "file.mp3"));
+        const oggStream = await this.getOggStream(fileStream);
+
+        if (!oggStream) {
             await this.botService.sendErrorMessage(chatId, EnumErrorCode.PROCESSING_ERROR);
 
             return;
         }
 
-        const imageGenerationPromises: Promise<string | undefined>[] = [];
-        const sttChunkMessageIds: number[] = [];
+        const textChunks = await this.handleSttTransform(oggStream, async (alternative) => {
+            await this.botService.sendMessage(chatId, alternative.text);
+        });
 
+        await this.botService.sendMessage(
+            chatId,
+            "Successfully processed stt: \n" + textChunks.map((item) => item.text).join("\n"),
+        );
+
+        const imageChunkMap = await this.getGeneratedImages(textChunks);
+        await this.botService.sendMessage(chatId, "Successfully process image generation");
+
+        const imageExtension = ".jpg";
+        const resultGenerationMap = _.chain(textChunks)
+            .sortBy((item) => item.startTime)
+            .map((item) => ({
+                ...item,
+                imageData: imageChunkMap.get(item.text),
+                duration: item.endTime - item.startTime,
+                uniqueId: getRandomInt(),
+            }))
+            .value();
+
+        const ffmpegConcatInput = _.reduce(
+            resultGenerationMap,
+            (accum, chunk, index) => {
+                const getFileInfoLine = (filename: string | number, duration: number) =>
+                    "file " +
+                    "'" +
+                    filename +
+                    imageExtension +
+                    "'" +
+                    "\n" +
+                    "duration " +
+                    duration +
+                    "\n";
+
+                let imageInfo: string = "";
+
+                if (index === resultGenerationMap.length - 1) {
+                    const totalDuration = _.reduce(
+                        resultGenerationMap,
+                        (accum, { duration }) => accum + duration,
+                        0,
+                    );
+
+                    imageInfo = getFileInfoLine(chunk.uniqueId, totalDuration);
+                } else {
+                    imageInfo = getFileInfoLine(chunk.uniqueId, chunk.duration);
+                }
+
+                return accum + imageInfo;
+            },
+            "",
+        );
+
+        await fsExtra.writeFile(path.join(directory, "input.txt"), ffmpegConcatInput);
+
+        for (const data of resultGenerationMap.values()) {
+            if (!data.imageData) {
+                continue;
+            }
+
+            await fsExtra.writeFile(
+                path.join(directory, data.uniqueId.toString() + imageExtension),
+                data.imageData,
+                {
+                    encoding: "base64",
+                },
+            );
+        }
+
+        await this.botService.sendMessage(chatId, "Start generating video...");
+        await awaitSpawn(
+            "ffmpeg",
+            [
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                "input.txt",
+                "-i",
+                "file.mp3",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-c:a",
+                "aac",
+                "-shortest",
+                "output.mp4",
+            ],
+            { cwd: directory },
+        );
+        await this.botService.sendMessage(
+            chatId,
+            "Video successfully generated. Wait for upload...",
+        );
+
+        const outputFile = fsExtra.createReadStream(path.join(directory, "output.mp4"));
+        await this.botService.sendMp4Video(chatId, outputFile);
+    }
+
+    private async handleSttTransform(
+        oggStream: PassThrough,
+        onChunkReceive?: (alternative: SpeechRecognitionAlternative) => Promise<void> | void,
+    ) {
+        const totalTextChunks: TextChunk[] = [];
+        let bufferedChunk: TextChunk | undefined;
         const yandexSttService = await this.yandexSttServiceProvider();
-        const yandexArtService = await this.yandexArtServiceProvider();
 
         for await (const chunk of yandexSttService.oggToText(oggStream)) {
             if (!chunk) {
                 continue;
             }
 
-            console.log(JSON.stringify(chunk));
-
-            const chunksText = _.chain(chunk.chunks)
+            const sttAlternative = _.chain(chunk.chunks)
                 .flatMap((chunk) => _.head(chunk.alternatives))
                 .compact()
-                .flatMap((alternative) => alternative.text)
-                .join(" ")
+                .head()
                 .value();
-            const sendMessage = await this.botService.sendMessage(chatId, chunksText);
 
-            // imageGenerationPromises.push(yandexArtService.getGeneratedImage(chunksText));
-            // sttChunkMessageIds.push(sendMessage.message_id);
+            if (_.isFunction(onChunkReceive)) {
+                await onChunkReceive(sttAlternative);
+            }
+
+            const text = _.get(sttAlternative, "text");
+            const startTime = _.get(_.head(sttAlternative.words), "startTime.seconds");
+            const endTime = _.get(_.last(sttAlternative.words), "endTime.seconds");
+
+            if (!startTime || !endTime) {
+                continue;
+            }
+
+            const currentChunk: TextChunk = {
+                text,
+                startTime,
+                endTime,
+            };
+
+            if (bufferedChunk) {
+                currentChunk.text = `${bufferedChunk.text} ${currentChunk.text}`;
+                currentChunk.startTime = bufferedChunk.startTime;
+            }
+
+            if (currentChunk.text.length < 50) {
+                bufferedChunk = currentChunk;
+
+                continue;
+            }
+
+            totalTextChunks.push(currentChunk);
+            bufferedChunk = undefined;
         }
-        // const resultImages = await Promise.all(imageGenerationPromises);
 
-        // for (const [image, id] of _.zip(_.compact(resultImages), sttChunkMessageIds)) {
-        //     if (!image || !id) {
-        //         return;
-        //     }
-        //
-        //     await this.botService.sendBase64Image(chatId, image, { reply_to_message_id: id });
-        // }
-        //
-        await this.botService.sendMessage(chatId, "MEGAEND");
+        const lastItem = _.last(totalTextChunks);
+        if (bufferedChunk && lastItem) {
+            lastItem.text = `${bufferedChunk.text} ${lastItem.text}`;
+            lastItem.startTime = bufferedChunk.startTime;
+        }
+
+        return totalTextChunks;
+    }
+
+    private async getGeneratedImages(textChunks: TextChunk[]) {
+        const artService = await this.yandexArtServiceProvider();
+        const chunkToImageMap = new Map<string, string>();
+
+        await Promise.all(
+            _.map(
+                textChunks,
+                (chunk) =>
+                    new Promise(async (res) => {
+                        const data = await artService.getGeneratedImage(chunk.text);
+
+                        if (data) {
+                            chunkToImageMap.set(chunk.text, data);
+                        }
+
+                        res(void 0);
+                    }),
+            ),
+        );
+
+        return chunkToImageMap;
+    }
+
+    // possible bottleneck - telegram seems to convert all audio files to mp3
+    // need to manually convert them to ogg / wav as stt.v2 doesn't support mp3 streaming
+    private async getOggStream(mp3WebStream: Readable) {
+        const ffmpegCommandResult = this.ffmpegService.convertToOgg(mp3WebStream);
+        const oggStream = ffmpegCommandResult.pipe();
+
+        if (!(oggStream instanceof PassThrough)) {
+            return undefined;
+        }
+
+        return oggStream;
     }
 
     private precheckAudio(
@@ -161,153 +332,9 @@ export class AudioService implements TelegramEventHandler<"audio"> {
         };
     }
 }
-const obj = {
-    $type: "yandex.cloud.ai.stt.v2.StreamingRecognitionResponse",
-    chunks: [
-        {
-            $type: "yandex.cloud.ai.stt.v2.SpeechRecognitionChunk",
-            final: true,
-            endOfUtterance: true,
-            alternatives: [
-                {
-                    $type: "yandex.cloud.ai.stt.v2.SpeechRecognitionAlternative",
-                    text: "Обожжешься змеей вот и удача в конце то концов",
-                    confidence: 1,
-                    words: [
-                        {
-                            $type: "yandex.cloud.ai.stt.v2.WordInfo",
-                            word: "обожжешься",
-                            confidence: 1,
-                            startTime: {
-                                $type: "google.protobuf.Duration",
-                                seconds: 32,
-                                nanos: 440000000,
-                            },
-                            endTime: { $type: "google.protobuf.Duration", seconds: 33, nanos: 0 },
-                        },
-                        {
-                            $type: "yandex.cloud.ai.stt.v2.WordInfo",
-                            word: "змеей",
-                            confidence: 1,
-                            startTime: {
-                                $type: "google.protobuf.Duration",
-                                seconds: 33,
-                                nanos: 100000000,
-                            },
-                            endTime: {
-                                $type: "google.protobuf.Duration",
-                                seconds: 33,
-                                nanos: 860000000,
-                            },
-                        },
-                        {
-                            $type: "yandex.cloud.ai.stt.v2.WordInfo",
-                            word: "вот",
-                            confidence: 1,
-                            startTime: {
-                                $type: "google.protobuf.Duration",
-                                seconds: 33,
-                                nanos: 940000000,
-                            },
-                            endTime: {
-                                $type: "google.protobuf.Duration",
-                                seconds: 34,
-                                nanos: 138000000,
-                            },
-                        },
-                        {
-                            $type: "yandex.cloud.ai.stt.v2.WordInfo",
-                            word: "и",
-                            confidence: 1,
-                            startTime: {
-                                $type: "google.protobuf.Duration",
-                                seconds: 34,
-                                nanos: 200000000,
-                            },
-                            endTime: {
-                                $type: "google.protobuf.Duration",
-                                seconds: 34,
-                                nanos: 220000000,
-                            },
-                        },
-                        {
-                            $type: "yandex.cloud.ai.stt.v2.WordInfo",
-                            word: "удача",
-                            confidence: 1,
-                            startTime: {
-                                $type: "google.protobuf.Duration",
-                                seconds: 34,
-                                nanos: 238000000,
-                            },
-                            endTime: {
-                                $type: "google.protobuf.Duration",
-                                seconds: 34,
-                                nanos: 640000000,
-                            },
-                        },
-                        {
-                            $type: "yandex.cloud.ai.stt.v2.WordInfo",
-                            word: "в",
-                            confidence: 1,
-                            startTime: {
-                                $type: "google.protobuf.Duration",
-                                seconds: 35,
-                                nanos: 120000000,
-                            },
-                            endTime: {
-                                $type: "google.protobuf.Duration",
-                                seconds: 35,
-                                nanos: 140000000,
-                            },
-                        },
-                        {
-                            $type: "yandex.cloud.ai.stt.v2.WordInfo",
-                            word: "конце",
-                            confidence: 1,
-                            startTime: {
-                                $type: "google.protobuf.Duration",
-                                seconds: 35,
-                                nanos: 180000000,
-                            },
-                            endTime: {
-                                $type: "google.protobuf.Duration",
-                                seconds: 35,
-                                nanos: 580000000,
-                            },
-                        },
-                        {
-                            $type: "yandex.cloud.ai.stt.v2.WordInfo",
-                            word: "то",
-                            confidence: 1,
-                            startTime: {
-                                $type: "google.protobuf.Duration",
-                                seconds: 35,
-                                nanos: 680000000,
-                            },
-                            endTime: {
-                                $type: "google.protobuf.Duration",
-                                seconds: 35,
-                                nanos: 800000000,
-                            },
-                        },
-                        {
-                            $type: "yandex.cloud.ai.stt.v2.WordInfo",
-                            word: "концов",
-                            confidence: 1,
-                            startTime: {
-                                $type: "google.protobuf.Duration",
-                                seconds: 35,
-                                nanos: 920000000,
-                            },
-                            endTime: {
-                                $type: "google.protobuf.Duration",
-                                seconds: 36,
-                                nanos: 300000000,
-                            },
-                        },
-                    ],
-                },
-            ],
-        },
-    ],
-};
+
+interface TextChunk {
+    text: string;
+    startTime: number;
+    endTime: number;
+}

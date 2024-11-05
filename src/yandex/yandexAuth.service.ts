@@ -6,6 +6,8 @@ import { yandexIamApiUrl } from "@/static";
 import { CronJob } from "cron";
 import fs from "node:fs";
 import jose from "node-jose";
+import axios from "axios";
+import _ from "lodash";
 
 @injectable()
 export class YandexAuthService {
@@ -61,15 +63,18 @@ export class YandexAuthService {
 
     private async updateIamToken() {
         const jwt = await this.getJwtKey();
-        const response = await fetch(yandexIamApiUrl, {
-            method: "POST",
-            body: JSON.stringify({
+        const response = await axios.post(
+            yandexIamApiUrl,
+            JSON.stringify({
                 jwt,
             }),
-        });
-        const json = await response.json();
+        );
 
-        this.iamToken = json.iamToken;
+        const responseToken = _.get(response, "data.iamToken");
+        if (!responseToken) {
+            this.loggerService.error("YandexAuth: updateIamToken error updating token");
+        }
+        this.iamToken = responseToken;
         this.loggerService.info("YandexAuthService: update iamToken");
     }
 
