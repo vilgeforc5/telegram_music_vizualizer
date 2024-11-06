@@ -1,15 +1,15 @@
-import { inject, injectable, interfaces } from "inversify";
-import { yandexInjectionTokens } from "@/yandex/yandex.tokens";
-import { YandexAuthService } from "@/yandex/yandexAuth.service";
-import { globalInjectionTokens } from "@/di/globalInjectionTokens";
-import { ConfigService } from "@/config.service";
-import { delay } from "@/utils/delay";
-import _ from "lodash";
-import { yandexFoundationLLmUrl } from "@/static";
-import { getRandomInt } from "@/utils/getRandomInt";
-import { YandexAbstractAuthService } from "@/yandex/yandexAbstractAuth.service";
-import { LoggerService } from "@/logger.service";
-import axios from "axios";
+import { inject, injectable, interfaces } from 'inversify';
+import { yandexInjectionTokens } from '@/yandex/yandex.tokens';
+import { YandexAuthService } from '@/yandex/yandexAuth.service';
+import { globalInjectionTokens } from '@/di/globalInjectionTokens';
+import { ConfigService } from '@/config.service';
+import { delay } from '@/utils/delay';
+import _ from 'lodash';
+import { yandexFoundationLLmUrl } from '@/static';
+import { getRandomInt } from '@/utils/getRandomInt';
+import { YandexAbstractAuthService } from '@/yandex/yandexAbstractAuth.service';
+import { LoggerService } from '@/logger.service';
+import axios from 'axios';
 
 /**
  * @description uses yandex stt.v2 grpc api for streaming
@@ -40,11 +40,11 @@ export class YandexArtService extends YandexAbstractAuthService {
                     widthRatio: 16,
                     heightRatio: 9,
                 },
-                mimeType: "image/jpeg",
+                mimeType: 'image/jpeg',
             },
             messages: [
                 {
-                    weight: "1",
+                    weight: '1',
                     text: prompt,
                 },
             ],
@@ -53,7 +53,7 @@ export class YandexArtService extends YandexAbstractAuthService {
         try {
             const response = await axios.post(
                 new URL(
-                    "/foundationModels/v1/imageGenerationAsync",
+                    '/foundationModels/v1/imageGenerationAsync',
                     yandexFoundationLLmUrl,
                 ).toString(),
                 JSON.stringify(body),
@@ -64,7 +64,7 @@ export class YandexArtService extends YandexAbstractAuthService {
                 },
             );
 
-            const id = _.get(response, "data.id");
+            const id = _.get(response, 'data.id');
 
             if (!id) {
                 return undefined;
@@ -72,9 +72,9 @@ export class YandexArtService extends YandexAbstractAuthService {
 
             const result = await Promise.race([this.waitForOperationResolve(id), delay(60 * 10e3)]);
 
-            return _.get(result, "response.image");
+            return _.get(result, 'response.image');
         } catch (error) {
-            this.loggerService.error("YandexArtService error: ", error);
+            this.loggerService.error('YandexArtService error: ', error);
         }
     }
 
@@ -82,7 +82,7 @@ export class YandexArtService extends YandexAbstractAuthService {
         const authService = await this.getAuthService();
 
         const operationApiUrl = new URL(`/operations/${operationId}`, yandexFoundationLLmUrl);
-        operationApiUrl.port = "443";
+        operationApiUrl.port = '443';
 
         while (true) {
             try {
@@ -91,16 +91,16 @@ export class YandexArtService extends YandexAbstractAuthService {
                         Authorization: `Bearer ${authService.iamToken}`,
                     },
                 });
-                const data = _.get(response, "data");
+                const data = _.get(response, 'data');
 
                 if (data.done) {
                     return data;
                 }
             } catch (error) {
-                this.loggerService.error("YandexArtService error: ", error);
+                this.loggerService.error('YandexArtService error: ', error);
             }
 
-            await delay(5000);
+            await delay(30000);
         }
     }
 

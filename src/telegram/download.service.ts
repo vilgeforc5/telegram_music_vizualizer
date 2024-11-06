@@ -1,10 +1,10 @@
-import { telegramApiBaseUrl } from "@/static";
-import { inject, injectable } from "inversify";
-import { globalInjectionTokens } from "@/di/globalInjectionTokens";
-import { ConfigService } from "@/config.service";
-import { LoggerService } from "@/logger.service";
-import _ from "lodash";
-import axios from "axios";
+import { telegramApiBaseUrl } from '@/static';
+import { inject, injectable } from 'inversify';
+import { globalInjectionTokens } from '@/di/globalInjectionTokens';
+import { ConfigService } from '@/config.service';
+import { LoggerService } from '@/logger.service';
+import _ from 'lodash';
+import axios from 'axios';
 
 @injectable()
 export class DownloadService {
@@ -17,9 +17,9 @@ export class DownloadService {
         @inject(globalInjectionTokens.LoggerService)
         private readonly loggerService: LoggerService,
     ) {
-        const configTgBotKey = _.get(configService, "tgBotKey");
+        const configTgBotKey = _.get(configService, 'tgBotKey');
         if (!configTgBotKey) {
-            const error = new Error("DownloadService: no telegram bot key");
+            const error = new Error('DownloadService: no telegram bot key');
             this.loggerService.error(error);
 
             throw error;
@@ -30,7 +30,7 @@ export class DownloadService {
 
     async getFileInfo(file_id: string) {
         try {
-            this.loggerService.info("DownloadService: getFileInfo", file_id);
+            this.loggerService.info('DownloadService: getFileInfo', file_id);
 
             const url = new URL(
                 `/bot${this.tgBotKey}/getFile?file_id=${file_id}`,
@@ -40,7 +40,7 @@ export class DownloadService {
 
             return res.data;
         } catch (error) {
-            this.loggerService.error("DownloadService: getFileInfo error", error);
+            this.loggerService.error('DownloadService: getFileInfo error', error);
 
             return undefined;
         }
@@ -48,14 +48,14 @@ export class DownloadService {
 
     async getFileStream(filePath: string): Promise<NodeJS.ReadableStream | undefined> {
         try {
-            this.loggerService.info("DownloadService: getFile", filePath);
+            this.loggerService.info('DownloadService: getFile', filePath);
 
             const url = new URL(`file/bot${this.tgBotKey}/${filePath}`, telegramApiBaseUrl);
-            const response = await axios.get(url.toString(), { responseType: "stream" });
+            const response = await axios.get(url.toString(), { responseType: 'stream' });
 
-            return _.get(response, "data");
+            return _.get(response, 'data');
         } catch (error) {
-            this.loggerService.error("DownloadService: getFileResponse error", error);
+            this.loggerService.error('DownloadService: getFileResponse error', error);
 
             return undefined;
         }

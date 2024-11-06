@@ -1,5 +1,5 @@
-import { YandexAuthService } from "@/yandex/yandexAuth.service";
-import { injectable, interfaces } from "inversify";
+import { YandexAuthService } from '@/yandex/yandexAuth.service';
+import { injectable, interfaces } from 'inversify';
 
 @injectable()
 export abstract class YandexAbstractAuthService {

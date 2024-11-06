@@ -1,6 +1,6 @@
-import { App } from "@/app";
-import { globalInjectionTokens } from "@/di/globalInjectionTokens";
-import { getAppContainer } from "@/di/inversify.config";
+import { App } from '@/app';
+import { globalInjectionTokens } from '@/di/globalInjectionTokens';
+import { getAppContainer } from '@/di/inversify.config';
 
 async function main() {
     const appContainer = await getAppContainer();

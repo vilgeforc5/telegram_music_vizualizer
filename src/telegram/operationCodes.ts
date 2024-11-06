@@ -3,15 +3,17 @@ export enum EnumErrorCode {
     TOO_LONG_FILE,
     UNSUPPORTED_CODEC,
     DOWNLOADING_ERROR,
-    PROCESSING_ERROR
+    PROCESSING_ERROR,
 }
 
 export const errorCodeToTextMap = {
-    [EnumErrorCode.NO_AUDIO_PROVIDED]: "No audio provided :(",
-    [EnumErrorCode.TOO_LONG_FILE]: "Too long audio :(",
-    [EnumErrorCode.UNSUPPORTED_CODEC]: "Not supported audio codec :(",
-    [EnumErrorCode.DOWNLOADING_ERROR]: "Something went wrong while capturing audio info. In Progress -> Closed :(",
-    [EnumErrorCode.PROCESSING_ERROR]: "Something went bad while processing command. In Progress -> Closed :("
+    [EnumErrorCode.NO_AUDIO_PROVIDED]: 'No audio provided :(',
+    [EnumErrorCode.TOO_LONG_FILE]: 'Too long audio :(',
+    [EnumErrorCode.UNSUPPORTED_CODEC]: 'Not supported audio codec :(',
+    [EnumErrorCode.DOWNLOADING_ERROR]:
+        'Something went wrong while capturing audio info. In Progress -> Closed :(',
+    [EnumErrorCode.PROCESSING_ERROR]:
+        'Something went bad while processing command. In Progress -> Closed :(',
 };
 
 export enum EnumInfoCode {
@@ -19,5 +21,5 @@ export enum EnumInfoCode {
 }
 
 export const infoCodeToTextMap = {
-    [EnumInfoCode.START_OPERATION]: "Received your audio. Open -> In Progress :)",
+    [EnumInfoCode.START_OPERATION]: 'Received your audio. Open -> In Progress :)',
 };

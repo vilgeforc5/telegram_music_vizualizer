@@ -1,5 +1,5 @@
-import "dotenv/config";
-import { injectable } from "inversify";
+import 'dotenv/config';
+import { injectable } from 'inversify';
 
 @injectable()
 export class ConfigService {

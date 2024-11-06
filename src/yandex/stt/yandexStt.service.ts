@@ -1,18 +1,18 @@
-import { inject, injectable, interfaces } from "inversify";
-import { yandexInjectionTokens } from "@/yandex/yandex.tokens";
-import { YandexAuthService } from "@/yandex/yandexAuth.service";
-import { serviceClients } from "@yandex-cloud/nodejs-sdk";
-import { globalInjectionTokens } from "@/di/globalInjectionTokens";
-import { ConfigService } from "@/config.service";
+import { inject, injectable, interfaces } from 'inversify';
+import { yandexInjectionTokens } from '@/yandex/yandex.tokens';
+import { YandexAuthService } from '@/yandex/yandexAuth.service';
+import { serviceClients } from '@yandex-cloud/nodejs-sdk';
+import { globalInjectionTokens } from '@/di/globalInjectionTokens';
+import { ConfigService } from '@/config.service';
 import {
     RecognitionSpec_AudioEncoding,
     StreamingRecognitionRequest,
-} from "@yandex-cloud/nodejs-sdk/dist/generated/yandex/cloud/ai/stt/v2/stt_service";
-import { ReadStream } from "node:fs";
-import { getChunkedStream } from "@/utils/getChunkedStream";
-import { LoggerService } from "@/logger.service";
-import { PassThrough } from "node:stream";
-import { YandexAbstractAuthService } from "@/yandex/yandexAbstractAuth.service";
+} from '@yandex-cloud/nodejs-sdk/dist/generated/yandex/cloud/ai/stt/v2/stt_service';
+import { ReadStream } from 'node:fs';
+import { getChunkedStream } from '@/utils/getChunkedStream';
+import { LoggerService } from '@/logger.service';
+import { PassThrough } from 'node:stream';
+import { YandexAbstractAuthService } from '@/yandex/yandexAbstractAuth.service';
 import Provider = interfaces.Provider;
 
 /**
@@ -46,7 +46,7 @@ export class YandexSttService extends YandexAbstractAuthService {
                             audioEncoding: RecognitionSpec_AudioEncoding.OGG_OPUS,
                             profanityFilter: false,
                             literatureText: false,
-                            model: "general",
+                            model: 'general',
                             audioChannelCount: 1,
                         },
                         folderId,
@@ -73,7 +73,7 @@ export class YandexSttService extends YandexAbstractAuthService {
 
             yield null;
         } catch (error) {
-            this.loggerService.error("YandexSttService error: ", error);
+            this.loggerService.error('YandexSttService error: ', error);
 
             yield null;
         }

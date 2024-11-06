@@ -1,3 +1,3 @@
 export const ffmpegInjectionTokens = {
-    FFMpegService: Symbol.for('FFMpegService')
-}
+    FFMpegService: Symbol.for('FFMpegService'),
+};

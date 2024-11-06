@@ -1,5 +1,5 @@
-import { PassThrough, Readable } from "node:stream";
-import { delay } from "./delay";
+import { PassThrough, Readable } from 'node:stream';
+import { delay } from './delay';
 
 export async function* getChunkedStream(
     stream: PassThrough | Readable,

@@ -1,30 +1,31 @@
-import { TelegramEventHandler } from "@/telegram/telegramEventHandler";
-import TelegramBot, { Message } from "node-telegram-bot-api";
-import { inject, injectable } from "inversify";
-import { globalInjectionTokens } from "@/di/globalInjectionTokens";
-import { LoggerService } from "@/logger.service";
-import _ from "lodash";
-import { telegramInjectionTokens } from "@/telegram/telegramInjectionTokens";
-import { BotService } from "@/telegram/bot.service";
-import { EnumErrorCode, EnumInfoCode } from "@/telegram/operationCodes";
-import { DownloadService } from "@/telegram/download.service";
-import { yandexInjectionTokens } from "@/yandex/yandex.tokens";
-import { YandexSttService } from "@/yandex/yandexStt.service";
-import { PassThrough, Readable } from "node:stream";
-import { ffmpegInjectionTokens } from "@/ffmpeg/ffmpeg.tokens";
-import { FfmpegService } from "@/ffmpeg/ffmpeg.service";
-import { YandexArtService } from "@/yandex/yandexArt.service";
-import { SpeechRecognitionAlternative } from "@yandex-cloud/nodejs-sdk/dist/generated/yandex/cloud/ai/stt/v2/stt_service";
-import { pipeline } from "stream/promises";
-import { getRandomInt } from "@/utils/getRandomInt";
-import fsExtra from "fs-extra";
-//@ts-ignore
-import awaitSpawn from "await-spawn";
-import path from "node:path";
-import * as os from "node:os";
+import { TelegramEventHandler } from '@/telegram/telegramEventHandler';
+import TelegramBot, { Message } from 'node-telegram-bot-api';
+import { inject, injectable } from 'inversify';
+import { globalInjectionTokens } from '@/di/globalInjectionTokens';
+import { LoggerService } from '@/logger.service';
+import _ from 'lodash';
+import { telegramInjectionTokens } from '@/telegram/telegramInjectionTokens';
+import { BotService } from '@/telegram/bot.service';
+import { EnumErrorCode, EnumInfoCode } from '@/telegram/operationCodes';
+import { DownloadService } from '@/telegram/download.service';
+import { yandexInjectionTokens } from '@/yandex/yandex.tokens';
+import { YandexSttService } from '@/yandex/stt/yandexStt.service';
+import { PassThrough, Readable } from 'node:stream';
+import { ffmpegInjectionTokens } from '@/ffmpeg/ffmpeg.tokens';
+import { FfmpegService } from '@/ffmpeg/ffmpeg.service';
+import { YandexArtService } from '@/yandex/art/yandexArt.service';
+import { SpeechRecognitionAlternative } from '@yandex-cloud/nodejs-sdk/dist/generated/yandex/cloud/ai/stt/v2/stt_service';
+import { pipeline } from 'stream/promises';
+import { getRandomInt } from '@/utils/getRandomInt';
+import fsExtra from 'fs-extra';
+import awaitSpawn from 'await-spawn';
+import path from 'node:path';
+import * as os from 'node:os';
 
 @injectable()
-export class AudioService implements TelegramEventHandler<"audio"> {
+export class AudioService implements TelegramEventHandler<'audio'> {
+    private tmpFolderPrefix = 'tgaudiobot';
+
     constructor(
         @inject(globalInjectionTokens.LoggerService)
         private loggerService: LoggerService,
@@ -46,14 +47,19 @@ export class AudioService implements TelegramEventHandler<"audio"> {
     ) {}
 
     get eventName() {
-        return "audio" as const;
+        return 'audio' as const;
     }
 
     async handler(message: Message) {
-        const chatId = _.get(message, "chat.id");
-        const audio = _.get(message, "audio");
-        const { code, ok } = this.precheckAudio(audio);
+        const chatId = _.get(message, 'chat.id');
+        const audio = _.get(message, 'audio');
+        if (!audio) {
+            await this.botService.sendErrorMessage(chatId, EnumErrorCode.NO_AUDIO_PROVIDED);
 
+            return;
+        }
+
+        const { code, ok } = this.precheckAudio(audio);
         if (!ok) {
             await this.botService.sendErrorMessage(chatId, code);
 
@@ -61,59 +67,45 @@ export class AudioService implements TelegramEventHandler<"audio"> {
         }
 
         await this.botService.sendInfoMessage(chatId, code);
-        const fileId = _.get(audio, "file_id");
 
-        if (!fileId) {
-            await this.botService.sendErrorMessage(chatId, EnumErrorCode.DOWNLOADING_ERROR);
-
-            return;
-        }
-
-        const audioInfo = await this.downloadService.getFileInfo(fileId);
-        const audioPath = _.get(audioInfo, "result.file_path");
-
-        if (!audioPath || _.isEmpty(audioPath)) {
+        const audioInfo = await this.downloadService.getFileInfo(audio.file_id);
+        const audioPath = _.get(audioInfo, 'result.file_path');
+        if (_.isEmpty(audioPath)) {
             await this.botService.sendErrorMessage(chatId, EnumErrorCode.DOWNLOADING_ERROR);
 
             return;
         }
 
         const audioResponseStream = await this.downloadService.getFileStream(audioPath);
-
         if (!audioResponseStream) {
             await this.botService.sendErrorMessage(chatId, EnumErrorCode.DOWNLOADING_ERROR);
 
             return;
         }
 
-        const directory = fsExtra.mkdtempSync(path.join(os.tmpdir(), "tgaudiobot"));
-        console.log({ directory });
-        const file = fsExtra.createWriteStream(path.join(directory, "file.mp3"));
-
+        const directory = fsExtra.mkdtempSync(path.join(os.tmpdir(), this.tmpFolderPrefix));
+        const file = fsExtra.createWriteStream(path.join(directory, 'file.mp3'));
         await pipeline(audioResponseStream, file);
 
-        const fileStream = fsExtra.createReadStream(path.join(directory, "file.mp3"));
+        const fileStream = fsExtra.createReadStream(path.join(directory, 'file.mp3'));
         const oggStream = await this.getOggStream(fileStream);
-
         if (!oggStream) {
             await this.botService.sendErrorMessage(chatId, EnumErrorCode.PROCESSING_ERROR);
 
             return;
         }
 
-        const textChunks = await this.handleSttTransform(oggStream, async (alternative) => {
-            await this.botService.sendMessage(chatId, alternative.text);
-        });
+        const textChunks = await this.handleSttTransform(oggStream);
 
         await this.botService.sendMessage(
             chatId,
-            "Successfully processed stt: \n" + textChunks.map((item) => item.text).join("\n"),
+            'Successfully processed stt: \n' + textChunks.map((item) => item.text).join('\n'),
         );
 
         const imageChunkMap = await this.getGeneratedImages(textChunks);
-        await this.botService.sendMessage(chatId, "Successfully process image generation");
+        await this.botService.sendMessage(chatId, 'Successfully process image generation');
 
-        const imageExtension = ".jpg";
+        const imageExtension = '.jpg';
         const resultGenerationMap = _.chain(textChunks)
             .sortBy((item) => item.startTime)
             .map((item) => ({
@@ -128,17 +120,17 @@ export class AudioService implements TelegramEventHandler<"audio"> {
             resultGenerationMap,
             (accum, chunk, index) => {
                 const getFileInfoLine = (filename: string | number, duration: number) =>
-                    "file " +
+                    'file ' +
                     "'" +
                     filename +
                     imageExtension +
                     "'" +
-                    "\n" +
-                    "duration " +
+                    '\n' +
+                    'duration ' +
                     duration +
-                    "\n";
+                    '\n';
 
-                let imageInfo: string = "";
+                let imageInfo: string = '';
 
                 if (index === resultGenerationMap.length - 1) {
                     const totalDuration = _.reduce(
@@ -154,55 +146,64 @@ export class AudioService implements TelegramEventHandler<"audio"> {
 
                 return accum + imageInfo;
             },
-            "",
+            '',
         );
 
-        await fsExtra.writeFile(path.join(directory, "input.txt"), ffmpegConcatInput);
+        await fsExtra.writeFile(path.join(directory, 'input.txt'), ffmpegConcatInput);
 
         for (const data of resultGenerationMap.values()) {
-            if (!data.imageData) {
+            const imageData = _.get(data, 'imageData');
+            if (!imageData) {
                 continue;
             }
 
             await fsExtra.writeFile(
                 path.join(directory, data.uniqueId.toString() + imageExtension),
-                data.imageData,
+                imageData,
                 {
-                    encoding: "base64",
+                    encoding: 'base64',
                 },
             );
         }
 
-        await this.botService.sendMessage(chatId, "Start generating video...");
-        await awaitSpawn(
-            "ffmpeg",
-            [
-                "-f",
-                "concat",
-                "-safe",
-                "0",
-                "-i",
-                "input.txt",
-                "-i",
-                "file.mp3",
-                "-c:v",
-                "libx264",
-                "-pix_fmt",
-                "yuv420p",
-                "-c:a",
-                "aac",
-                "-shortest",
-                "output.mp4",
-            ],
-            { cwd: directory },
-        );
-        await this.botService.sendMessage(
-            chatId,
-            "Video successfully generated. Wait for upload...",
-        );
+        await this.botService.sendMessage(chatId, 'Start generating video...');
 
-        const outputFile = fsExtra.createReadStream(path.join(directory, "output.mp4"));
-        await this.botService.sendMp4Video(chatId, outputFile);
+        try {
+            await awaitSpawn(
+                'ffmpeg',
+                [
+                    '-f',
+                    'concat',
+                    '-safe',
+                    '0',
+                    '-i',
+                    'input.txt',
+                    '-i',
+                    'file.mp3',
+                    '-c:v',
+                    'libx264',
+                    '-pix_fmt',
+                    'yuv420p',
+                    '-c:a',
+                    'aac',
+                    '-shortest',
+                    'output.mp4',
+                ],
+                { cwd: directory },
+            );
+
+            await this.botService.sendMessage(
+                chatId,
+                'Video successfully generated. Wait for upload...',
+            );
+
+            const outputFile = fsExtra.createReadStream(path.join(directory, 'output.mp4'));
+            await this.botService.sendVideo(chatId, outputFile);
+        } catch (error) {
+            this.loggerService.error('AudioService error ', error);
+
+            await this.botService.sendMessage(chatId, 'Error generating video data.');
+        }
     }
 
     private async handleSttTransform(
@@ -228,9 +229,9 @@ export class AudioService implements TelegramEventHandler<"audio"> {
                 await onChunkReceive(sttAlternative);
             }
 
-            const text = _.get(sttAlternative, "text");
-            const startTime = _.get(_.head(sttAlternative.words), "startTime.seconds");
-            const endTime = _.get(_.last(sttAlternative.words), "endTime.seconds");
+            const text = _.get(sttAlternative, 'text');
+            const startTime = _.get(_.head(sttAlternative.words), 'startTime.seconds');
+            const endTime = _.get(_.last(sttAlternative.words), 'endTime.seconds');
 
             if (!startTime || !endTime) {
                 continue;
@@ -303,23 +304,16 @@ export class AudioService implements TelegramEventHandler<"audio"> {
     }
 
     private precheckAudio(
-        audio?: TelegramBot.Audio,
+        audio: TelegramBot.Audio,
     ): { ok: false; code: EnumErrorCode } | { ok: true; code: EnumInfoCode } {
-        if (!audio) {
-            return {
-                ok: false,
-                code: EnumErrorCode.NO_AUDIO_PROVIDED,
-            };
-        }
-
-        if (audio.duration > 250) {
+        if (_.get(audio, 'duration') > 250) {
             return {
                 ok: false,
                 code: EnumErrorCode.TOO_LONG_FILE,
             };
         }
 
-        if (!audio.mime_type) {
+        if (!_.get(audio, 'mime_type')) {
             return {
                 ok: false,
                 code: EnumErrorCode.UNSUPPORTED_CODEC,

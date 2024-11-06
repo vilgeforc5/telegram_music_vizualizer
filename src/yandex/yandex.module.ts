@@ -1,8 +1,8 @@
-import { AsyncContainerModule, interfaces } from "inversify";
-import { YandexAuthService } from "@/yandex/yandexAuth.service";
-import { yandexInjectionTokens } from "@/yandex/yandex.tokens";
-import { YandexSttService } from "@/yandex/yandexStt.service";
-import { YandexArtService } from "@/yandex/yandexArt.service";
+import { AsyncContainerModule, interfaces } from 'inversify';
+import { YandexAuthService } from '@/yandex/yandexAuth.service';
+import { yandexInjectionTokens } from '@/yandex/yandex.tokens';
+import { YandexSttService } from '@/yandex/stt/yandexStt.service';
+import { YandexArtService } from '@/yandex/art/yandexArt.service';
 
 //TODO refactor repeated code from inside Provider(...)
 export const yandexModule = new AsyncContainerModule(async (bind) => {
