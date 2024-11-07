@@ -1,13 +1,12 @@
-import { inject, injectable, interfaces } from 'inversify';
+import { inject, injectable } from 'inversify';
 import { yandexInjectionTokens } from '@/yandex/yandex.tokens';
-import { YandexAuthService } from '@/yandex/yandexAuth.service';
+import { YandexAuthService } from '@/yandex/auth/yandexAuth.service';
 import { globalInjectionTokens } from '@/di/globalInjectionTokens';
 import { ConfigService } from '@/config.service';
 import { delay } from '@/utils/delay';
 import _ from 'lodash';
 import { yandexFoundationLLmUrl } from '@/static';
 import { getRandomInt } from '@/utils/getRandomInt';
-import { YandexAbstractAuthService } from '@/yandex/yandexAbstractAuth.service';
 import { LoggerService } from '@/logger.service';
 import axios from 'axios';
 
@@ -15,23 +14,20 @@ import axios from 'axios';
  * @description uses yandex stt.v2 grpc api for streaming
  */
 @injectable()
-export class YandexArtService extends YandexAbstractAuthService {
+export class YandexArtService {
     constructor(
-        @inject(yandexInjectionTokens.YandexAuthServiceProvider)
-        yandexAuthServiceProvider: interfaces.Provider<YandexAuthService>,
+        @inject(yandexInjectionTokens.YandexAuthService)
+        private readonly yandexAuthService: YandexAuthService,
 
         @inject(globalInjectionTokens.ConfigService)
         private readonly configService: ConfigService,
 
         @inject(globalInjectionTokens.LoggerService)
         private readonly loggerService: LoggerService,
-    ) {
-        super(yandexAuthServiceProvider);
-    }
+    ) {}
 
     async getGeneratedImage(prompt: string): Promise<string | undefined> {
         const folderId = this.configService.folderId;
-        const authService = await this.getAuthService();
         const body = {
             modelUri: `art://${folderId}/yandex-art/latest`,
             generationOptions: {
@@ -59,7 +55,7 @@ export class YandexArtService extends YandexAbstractAuthService {
                 JSON.stringify(body),
                 {
                     headers: {
-                        Authorization: `Bearer ${authService.iamToken}`,
+                        Authorization: `Bearer ${this.yandexAuthService.iamToken}`,
                     },
                 },
             );
@@ -79,8 +75,6 @@ export class YandexArtService extends YandexAbstractAuthService {
     }
 
     private async waitForOperationResolve(operationId: string) {
-        const authService = await this.getAuthService();
-
         const operationApiUrl = new URL(`/operations/${operationId}`, yandexFoundationLLmUrl);
         operationApiUrl.port = '443';
 
@@ -88,10 +82,10 @@ export class YandexArtService extends YandexAbstractAuthService {
             try {
                 const response = await axios.get(operationApiUrl.toString(), {
                     headers: {
-                        Authorization: `Bearer ${authService.iamToken}`,
+                        Authorization: `Bearer ${this.yandexAuthService.iamToken}`,
                     },
                 });
-                const data = _.get(response, 'data');
+                const data = _.get(response, 'data.done');
 
                 if (data.done) {
                     return data;
@@ -100,11 +94,7 @@ export class YandexArtService extends YandexAbstractAuthService {
                 this.loggerService.error('YandexArtService error: ', error);
             }
 
-            await delay(30000);
+            await delay(15000);
         }
-    }
-
-    async init() {
-        return this.getAuthService();
     }
 }

@@ -39,11 +39,11 @@ export class AudioService implements TelegramEventHandler<'audio'> {
         @inject(ffmpegInjectionTokens.FFMpegService)
         private ffmpegService: FfmpegService,
 
-        @inject(yandexInjectionTokens.YandexSttServiceProvider)
-        private yandexSttServiceProvider: () => Promise<YandexSttService>,
+        @inject(yandexInjectionTokens.YandexSttService)
+        private yandexSttService: YandexSttService,
 
-        @inject(yandexInjectionTokens.YandexArtServiceProvider)
-        private yandexArtServiceProvider: () => Promise<YandexArtService>,
+        @inject(yandexInjectionTokens.YandexArtService)
+        private yandexArtService: YandexArtService,
     ) {}
 
     get eventName() {
@@ -212,9 +212,8 @@ export class AudioService implements TelegramEventHandler<'audio'> {
     ) {
         const totalTextChunks: TextChunk[] = [];
         let bufferedChunk: TextChunk | undefined;
-        const yandexSttService = await this.yandexSttServiceProvider();
 
-        for await (const chunk of yandexSttService.oggToText(oggStream)) {
+        for await (const chunk of this.yandexSttService.oggToText(oggStream)) {
             if (!chunk) {
                 continue;
             }
@@ -268,7 +267,6 @@ export class AudioService implements TelegramEventHandler<'audio'> {
     }
 
     private async getGeneratedImages(textChunks: TextChunk[]) {
-        const artService = await this.yandexArtServiceProvider();
         const chunkToImageMap = new Map<string, string>();
 
         await Promise.all(
@@ -276,7 +274,7 @@ export class AudioService implements TelegramEventHandler<'audio'> {
                 textChunks,
                 (chunk) =>
                     new Promise(async (res) => {
-                        const data = await artService.getGeneratedImage(chunk.text);
+                        const data = await this.yandexArtService.getGeneratedImage(chunk.text);
 
                         if (data) {
                             chunkToImageMap.set(chunk.text, data);
