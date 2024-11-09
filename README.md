@@ -1,7 +1,7 @@
 # tgbotaudio
 
 simple telegram-bot + yandex api integration for stt + ai image text generation from song
-\*PoC that it works
+*PoC that it works
 
 # to start
 
