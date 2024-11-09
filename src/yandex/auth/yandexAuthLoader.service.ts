@@ -9,7 +9,7 @@ export class YandexAuthLoaderService {
         private readonly authService: YandexAuthService,
     ) {}
 
-    async load() {
+    async init() {
         return this.authService.init();
     }
 }
