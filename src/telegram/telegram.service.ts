@@ -1,8 +1,8 @@
 import { inject, injectable, multiInject } from 'inversify';
-import { telegramInjectionTokens } from '@/telegram/telegramInjectionTokens';
+import { telegramInjectionTokens } from '@/telegram/telegram.tokens';
 import { TelegramEventHandler } from '@/telegram/telegramEventHandler';
 import { TelegramEvents } from 'node-telegram-bot-api';
-import { globalInjectionTokens } from '@/di/globalInjectionTokens';
+import { globalInjectionTokens } from '@/di/global.tokens';
 import { LoggerService } from '@/logger.service';
 import { BotService } from '@/telegram/bot.service';
 import _ from 'lodash';

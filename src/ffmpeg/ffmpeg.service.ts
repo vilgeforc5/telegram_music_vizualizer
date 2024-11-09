@@ -1,14 +1,14 @@
 import { injectable } from 'inversify';
 import Ffmpeg from 'fluent-ffmpeg';
-import { Readable } from 'node:stream';
+import { PassThrough, Readable } from 'node:stream';
 
 @injectable()
 export class FfmpegService {
     constructor() {}
 
-    convertToOgg(mp3Stream: Readable) {
+    audioToOggStream(stream: Readable) {
         const ffmpegCommand = Ffmpeg();
 
-        return ffmpegCommand.input(mp3Stream).audioChannels(1).toFormat('ogg');
+        return ffmpegCommand.input(stream).audioChannels(1).toFormat('ogg').pipe() as PassThrough;
     }
 }

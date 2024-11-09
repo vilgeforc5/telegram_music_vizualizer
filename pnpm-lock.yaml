@@ -8,12 +8,6 @@ importers:
 
   .:
     dependencies:
-      '@types/fluent-ffmpeg':
-        specifier: ^2.1.27
-        version: 2.1.27
-      '@types/fs-extra':
-        specifier: ^11.0.4
-        version: 11.0.4
       '@yandex-cloud/nodejs-sdk':
         specifier: ^2.7.7
         version: 2.7.7
@@ -53,7 +47,16 @@ importers:
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
+      uuid:
+        specifier: ^11.0.2
+        version: 11.0.2
     devDependencies:
+      '@types/fluent-ffmpeg':
+        specifier: ^2.1.27
+        version: 2.1.27
+      '@types/fs-extra':
+        specifier: ^11.0.4
+        version: 11.0.4
       '@types/lodash':
         specifier: ^4
         version: 4.17.12
@@ -1201,6 +1204,10 @@ packages:
   utility-types@3.11.0:
     resolution: {integrity: sha512-6Z7Ma2aVEWisaL6TvBCy7P8rm2LQoPv6dJ7ecIaIixHcwfbJ0x7mWdbcwlIM5IGQxPZSFYeqRCqlOOeKoJYMkw==}
     engines: {node: '>= 4'}
+
+  uuid@11.0.2:
+    resolution: {integrity: sha512-14FfcOJmqdjbBPdDjFQyk/SdT4NySW4eM0zcG+HqbHP5jzuH56xO3J1DGhgs/cEMCfwYi3HQI1gnTO62iaG+tQ==}
+    hasBin: true
 
   uuid@3.4.0:
     resolution: {integrity: sha512-HjSDRw6gZE5JMggctHBcjVak08+KEVhSIiDzFnT9S9aegmp85S/bReBVTb4QTFaRNptJ9kuYaNhnbNEOkbKb/A==}
@@ -2515,6 +2522,8 @@ snapshots:
   util-deprecate@1.0.2: {}
 
   utility-types@3.11.0: {}
+
+  uuid@11.0.2: {}
 
   uuid@3.4.0: {}
 

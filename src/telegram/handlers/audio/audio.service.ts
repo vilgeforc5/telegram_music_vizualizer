@@ -1,26 +1,23 @@
 import { TelegramEventHandler } from '@/telegram/telegramEventHandler';
 import TelegramBot, { Message } from 'node-telegram-bot-api';
 import { inject, injectable } from 'inversify';
-import { globalInjectionTokens } from '@/di/globalInjectionTokens';
+import { globalInjectionTokens } from '@/di/global.tokens';
 import { LoggerService } from '@/logger.service';
 import _ from 'lodash';
-import { telegramInjectionTokens } from '@/telegram/telegramInjectionTokens';
+import { telegramInjectionTokens } from '@/telegram/telegram.tokens';
 import { BotService } from '@/telegram/bot.service';
 import { EnumErrorCode, EnumInfoCode } from '@/telegram/operationCodes';
 import { DownloadService } from '@/telegram/download.service';
-import { yandexInjectionTokens } from '@/yandex/yandex.tokens';
-import { YandexSttService } from '@/yandex/stt/yandexStt.service';
-import { PassThrough, Readable } from 'node:stream';
+import { PassThrough } from 'node:stream';
 import { ffmpegInjectionTokens } from '@/ffmpeg/ffmpeg.tokens';
 import { FfmpegService } from '@/ffmpeg/ffmpeg.service';
-import { YandexArtService } from '@/yandex/art/yandexArt.service';
-import { SpeechRecognitionAlternative } from '@yandex-cloud/nodejs-sdk/dist/generated/yandex/cloud/ai/stt/v2/stt_service';
 import { pipeline } from 'stream/promises';
 import { getRandomInt } from '@/utils/getRandomInt';
 import fsExtra from 'fs-extra';
 import awaitSpawn from 'await-spawn';
 import path from 'node:path';
 import * as os from 'node:os';
+import { ImageGenerationService, SttService, TextChunk } from '@/types/types';
 
 @injectable()
 export class AudioService implements TelegramEventHandler<'audio'> {
@@ -39,11 +36,11 @@ export class AudioService implements TelegramEventHandler<'audio'> {
         @inject(ffmpegInjectionTokens.FFMpegService)
         private ffmpegService: FfmpegService,
 
-        @inject(yandexInjectionTokens.YandexSttService)
-        private yandexSttService: YandexSttService,
+        @inject(globalInjectionTokens.SttService)
+        private sttService: SttService,
 
-        @inject(yandexInjectionTokens.YandexArtService)
-        private yandexArtService: YandexArtService,
+        @inject(globalInjectionTokens.ImageGenerationService)
+        private imageGenerationService: ImageGenerationService,
     ) {}
 
     get eventName() {
@@ -68,9 +65,9 @@ export class AudioService implements TelegramEventHandler<'audio'> {
 
         await this.botService.sendInfoMessage(chatId, code);
 
-        const audioInfo = await this.downloadService.getFileInfo(audio.file_id);
-        const audioPath = _.get(audioInfo, 'result.file_path');
-        if (_.isEmpty(audioPath)) {
+        const audioInfo = await this.botService.getFile(audio.file_id);
+        const audioPath = _.get(audioInfo, 'file_path');
+        if (_.isUndefined(audioPath) || _.isEmpty(audioPath)) {
             await this.botService.sendErrorMessage(chatId, EnumErrorCode.DOWNLOADING_ERROR);
 
             return;
@@ -88,15 +85,11 @@ export class AudioService implements TelegramEventHandler<'audio'> {
         await pipeline(audioResponseStream, file);
 
         const fileStream = fsExtra.createReadStream(path.join(directory, 'file.mp3'));
-        const oggStream = await this.getOggStream(fileStream);
-        if (!oggStream) {
-            await this.botService.sendErrorMessage(chatId, EnumErrorCode.PROCESSING_ERROR);
 
-            return;
-        }
-
+        // possible bottleneck - telegram seems to convert all audio files to mp3
+        // need to manually convert them to ogg / wav as stt.v2 doesn't support mp3 streaming
+        const oggStream = this.ffmpegService.audioToOggStream(fileStream);
         const textChunks = await this.handleSttTransform(oggStream);
-
         await this.botService.sendMessage(
             chatId,
             'Successfully processed stt: \n' + textChunks.map((item) => item.text).join('\n'),
@@ -132,16 +125,24 @@ export class AudioService implements TelegramEventHandler<'audio'> {
 
                 let imageInfo: string = '';
 
-                if (index === resultGenerationMap.length - 1) {
-                    const totalDuration = _.reduce(
-                        resultGenerationMap,
-                        (accum, { duration }) => accum + duration,
-                        0,
-                    );
+                switch (index) {
+                    case 0:
+                        imageInfo = getFileInfoLine(chunk.uniqueId, chunk.endTime);
+                        break;
 
-                    imageInfo = getFileInfoLine(chunk.uniqueId, totalDuration);
-                } else {
-                    imageInfo = getFileInfoLine(chunk.uniqueId, chunk.duration);
+                    case resultGenerationMap.length - 1:
+                        imageInfo = getFileInfoLine(
+                            chunk.uniqueId,
+                            _.reduce(
+                                resultGenerationMap,
+                                (accum, { duration }) => accum + duration,
+                                0,
+                            ),
+                        );
+                        break;
+
+                    default:
+                        imageInfo = getFileInfoLine(chunk.uniqueId, chunk.duration);
                 }
 
                 return accum + imageInfo;
@@ -196,51 +197,26 @@ export class AudioService implements TelegramEventHandler<'audio'> {
                 chatId,
                 'Video successfully generated. Wait for upload...',
             );
-
             const outputFile = fsExtra.createReadStream(path.join(directory, 'output.mp4'));
             await this.botService.sendVideo(chatId, outputFile);
+            await fsExtra.rmdir(directory, { recursive: true });
         } catch (error) {
             this.loggerService.error('AudioService error ', error);
 
-            await this.botService.sendMessage(chatId, 'Error generating video data.');
+            await this.botService.sendErrorMessage(chatId, EnumErrorCode.VIDEO_CREATING_ERROR);
         }
     }
 
-    private async handleSttTransform(
-        oggStream: PassThrough,
-        onChunkReceive?: (alternative: SpeechRecognitionAlternative) => Promise<void> | void,
-    ) {
+    private async handleSttTransform(oggStream: PassThrough) {
         const totalTextChunks: TextChunk[] = [];
         let bufferedChunk: TextChunk | undefined;
 
-        for await (const chunk of this.yandexSttService.oggToText(oggStream)) {
+        for await (const chunk of this.sttService.oggToTextStreamed(oggStream)) {
             if (!chunk) {
                 continue;
             }
 
-            const sttAlternative = _.chain(chunk.chunks)
-                .flatMap((chunk) => _.head(chunk.alternatives))
-                .compact()
-                .head()
-                .value();
-
-            if (_.isFunction(onChunkReceive)) {
-                await onChunkReceive(sttAlternative);
-            }
-
-            const text = _.get(sttAlternative, 'text');
-            const startTime = _.get(_.head(sttAlternative.words), 'startTime.seconds');
-            const endTime = _.get(_.last(sttAlternative.words), 'endTime.seconds');
-
-            if (!startTime || !endTime) {
-                continue;
-            }
-
-            const currentChunk: TextChunk = {
-                text,
-                startTime,
-                endTime,
-            };
+            const currentChunk = _.clone(chunk);
 
             if (bufferedChunk) {
                 currentChunk.text = `${bufferedChunk.text} ${currentChunk.text}`;
@@ -267,38 +243,27 @@ export class AudioService implements TelegramEventHandler<'audio'> {
     }
 
     private async getGeneratedImages(textChunks: TextChunk[]) {
-        const chunkToImageMap = new Map<string, string>();
+        this.loggerService.info('start generating images');
 
+        const chunkToImageMap = new Map<string, string>();
         await Promise.all(
             _.map(
                 textChunks,
                 (chunk) =>
                     new Promise(async (res) => {
-                        const data = await this.yandexArtService.getGeneratedImage(chunk.text);
+                        const data = await this.imageGenerationService.generateImage(chunk.text);
 
                         if (data) {
                             chunkToImageMap.set(chunk.text, data);
                         }
 
-                        res(void 0);
+                        res(undefined);
                     }),
             ),
         );
 
+        this.loggerService.info('end generating images', chunkToImageMap.size);
         return chunkToImageMap;
-    }
-
-    // possible bottleneck - telegram seems to convert all audio files to mp3
-    // need to manually convert them to ogg / wav as stt.v2 doesn't support mp3 streaming
-    private async getOggStream(mp3WebStream: Readable) {
-        const ffmpegCommandResult = this.ffmpegService.convertToOgg(mp3WebStream);
-        const oggStream = ffmpegCommandResult.pipe();
-
-        if (!(oggStream instanceof PassThrough)) {
-            return undefined;
-        }
-
-        return oggStream;
     }
 
     private precheckAudio(
@@ -323,10 +288,4 @@ export class AudioService implements TelegramEventHandler<'audio'> {
             code: EnumInfoCode.START_OPERATION,
         };
     }
-}
-
-interface TextChunk {
-    text: string;
-    startTime: number;
-    endTime: number;
 }

@@ -10,11 +10,11 @@
         "prettier": "3.3.3",
         "ts-node": "^10.9.2",
         "tsx": "^4.19.1",
-        "typescript": "^5.6.3"
+        "typescript": "^5.6.3",
+        "@types/fluent-ffmpeg": "^2.1.27",
+        "@types/fs-extra": "^11.0.4"
     },
     "dependencies": {
-        "@types/fluent-ffmpeg": "^2.1.27",
-        "@types/fs-extra": "^11.0.4",
         "@yandex-cloud/nodejs-sdk": "^2.7.7",
         "await-spawn": "^4.0.2",
         "axios": "^1.7.7",
@@ -27,11 +27,15 @@
         "lodash": "^4.17.21",
         "node-jose": "^2.2.0",
         "node-telegram-bot-api": "^0.66.0",
-        "reflect-metadata": "^0.2.2"
+        "reflect-metadata": "^0.2.2",
+        "uuid": "^11.0.2"
     },
     "scripts": {
         "dev": "tsx watch src/main.ts",
         "prettier:write": "prettier . --write",
         "tsc": "tsc -b"
+    },
+    "engines": {
+        "node": "21.7"
     }
 }

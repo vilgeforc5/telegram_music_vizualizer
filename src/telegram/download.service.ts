@@ -1,6 +1,6 @@
 import { telegramApiBaseUrl } from '@/static';
 import { inject, injectable } from 'inversify';
-import { globalInjectionTokens } from '@/di/globalInjectionTokens';
+import { globalInjectionTokens } from '@/di/global.tokens';
 import { ConfigService } from '@/config.service';
 import { LoggerService } from '@/logger.service';
 import _ from 'lodash';
@@ -19,8 +19,8 @@ export class DownloadService {
     ) {
         const configTgBotKey = _.get(configService, 'tgBotKey');
         if (!configTgBotKey) {
-            const error = new Error('DownloadService: no telegram bot key');
-            this.loggerService.error(error);
+            const error = new Error('no telegram bot key');
+            this.loggerService.error('DownloadService: error', error);
 
             throw error;
         }

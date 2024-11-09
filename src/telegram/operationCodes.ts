@@ -4,6 +4,7 @@ export enum EnumErrorCode {
     UNSUPPORTED_CODEC,
     DOWNLOADING_ERROR,
     PROCESSING_ERROR,
+    VIDEO_CREATING_ERROR,
 }
 
 export const errorCodeToTextMap = {
@@ -14,6 +15,7 @@ export const errorCodeToTextMap = {
         'Something went wrong while capturing audio info. In Progress -> Closed :(',
     [EnumErrorCode.PROCESSING_ERROR]:
         'Something went bad while processing command. In Progress -> Closed :(',
+    [EnumErrorCode.VIDEO_CREATING_ERROR]: 'Error generating video data',
 };
 
 export enum EnumInfoCode {

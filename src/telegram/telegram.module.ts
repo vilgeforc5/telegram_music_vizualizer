@@ -1,6 +1,6 @@
 import { ContainerModule } from 'inversify';
 import { BotService } from '@/telegram/bot.service';
-import { telegramInjectionTokens } from '@/telegram/telegramInjectionTokens';
+import { telegramInjectionTokens } from '@/telegram/telegram.tokens';
 import { TelegramEventHandler } from '@/telegram/telegramEventHandler';
 import { AudioService } from '@/telegram/handlers/audio/audio.service';
 import { TelegramEvents } from 'node-telegram-bot-api';

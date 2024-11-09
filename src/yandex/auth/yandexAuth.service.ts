@@ -1,5 +1,5 @@
 import { inject, injectable } from 'inversify';
-import { globalInjectionTokens } from '@/di/globalInjectionTokens';
+import { globalInjectionTokens } from '@/di/global.tokens';
 import { Session } from '@yandex-cloud/nodejs-sdk';
 import { LoggerService } from '@/logger.service';
 import { yandexIamApiUrl } from '@/static';

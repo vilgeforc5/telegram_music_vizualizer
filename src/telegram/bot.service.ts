@@ -7,7 +7,7 @@ import {
     infoCodeToTextMap,
 } from '@/telegram/operationCodes';
 import { decorate, inject, injectable } from 'inversify';
-import { globalInjectionTokens } from '@/di/globalInjectionTokens';
+import { globalInjectionTokens } from '@/di/global.tokens';
 import { ConfigService } from '@/config.service';
 
 decorate(injectable(), TelegramBot);
@@ -38,13 +38,13 @@ export class BotService extends TelegramBot {
     }
 
     sendErrorMessage(chatId: TelegramBot.ChatId, code: EnumErrorCode) {
-        this.loggerService.error(code);
+        this.loggerService.error('BotService: sendErrorMessage', code);
 
         return this.sendMessage(chatId, errorCodeToTextMap[code]);
     }
 
     sendInfoMessage(chatId: TelegramBot.ChatId, code: EnumInfoCode) {
-        this.loggerService.error(code);
+        this.loggerService.error('BotService: sendInfoMessage', code);
 
         return this.sendMessage(chatId, infoCodeToTextMap[code]);
     }
